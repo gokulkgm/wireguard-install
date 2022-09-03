@@ -110,13 +110,13 @@ new_client_dns () {
 		1|"")
 			# Locate the proper resolv.conf
 			# Needed for systems running systemd-resolved
-			if grep -q '^nameserver 127.0.0.53' "/etc/resolv.conf"; then
-				resolv_conf="/run/systemd/resolve/resolv.conf"
-			else
+			if grep '^nameserver' "/etc/resolv.conf" | grep -qv '127.0.0.53' ; then
 				resolv_conf="/etc/resolv.conf"
+			else
+				resolv_conf="/run/systemd/resolve/resolv.conf"
 			fi
 			# Extract nameservers and provide them in the required format
-			dns=$(grep -v '^#\|^;' "$resolv_conf" | grep '^nameserver' | grep -oE '[0-9]{1,3}(\.[0-9]{1,3}){3}' | xargs | sed -e 's/ /, /g')
+			dns=$(grep -v '^#\|^;' "$resolv_conf" | grep '^nameserver' | grep -v '127.0.0.53' | grep -oE '[0-9]{1,3}(\.[0-9]{1,3}){3}' | xargs | sed -e 's/ /, /g')
 		;;
 		2)
 			dns="8.8.8.8, 8.8.4.4"
@@ -311,6 +311,10 @@ if [[ ! -e /etc/wireguard/wg0.conf ]]; then
 			# kernel updates.
 			apt-get install -y linux-headers-"$architecture"
 			apt-get install -y wireguard qrencode $firewall
+		elif [[ "$os" == "centos" && "$os_version" -ge 9 ]]; then
+			# CentOS 9 or higher
+			dnf install -y epel-release
+			dnf install -y wireguard-tools qrencode $firewall
 		elif [[ "$os" == "centos" && "$os_version" -eq 8 ]]; then
 			# CentOS 8
 			dnf install -y epel-release elrepo-release
@@ -348,6 +352,10 @@ if [[ ! -e /etc/wireguard/wg0.conf ]]; then
 			apt-get update
 			apt-get install -y qrencode ca-certificates $cron $firewall
 			apt-get install -y wireguard-tools --no-install-recommends
+		elif [[ "$os" == "centos" && "$os_version" -ge 9 ]]; then
+			# CentOS 9 or higher
+			dnf install -y epel-release
+			dnf install -y wireguard-tools qrencode ca-certificates tar $cron $firewall
 		elif [[ "$os" == "centos" && "$os_version" -eq 8 ]]; then
 			# CentOS 8
 			dnf install -y epel-release
@@ -492,14 +500,14 @@ EOF
 	echo -e '\xE2\x86\x91 That is a QR code containing the client configuration.'
 	echo
 	# If the kernel module didn't load, system probably had an outdated kernel
-	# We'll try to help, but will not will not force a kernel upgrade upon the user
+	# We'll try to help, but will not force a kernel upgrade upon the user
 	if [[ ! "$is_container" -eq 0 ]] && ! modprobe -nq wireguard; then
 		echo "Warning!"
 		echo "Installation was finished, but the WireGuard kernel module could not load."
 		if [[ "$os" == "ubuntu" && "$os_version" -eq 1804 ]]; then
-		echo 'Upgrade the kernel and headers with "apt-get install linux-generic" and restart.'
+			echo 'Upgrade the kernel and headers with "apt-get install linux-generic" and restart.'
 		elif [[ "$os" == "debian" && "$os_version" -eq 10 ]]; then
-		echo "Upgrade the kernel with \"apt-get install linux-image-$architecture\" and restart."
+			echo "Upgrade the kernel with \"apt-get install linux-image-$architecture\" and restart."
 		elif [[ "$os" == "centos" && "$os_version" -le 8 ]]; then
 			echo "Reboot the system to load the most recent kernel."
 		fi
@@ -631,6 +639,10 @@ else
 						# Debian 10
 						rm -rf /etc/wireguard/
 						apt-get remove --purge -y wireguard wireguard-dkms wireguard-tools
+					elif [[ "$os" == "centos" && "$os_version" -ge 9 ]]; then
+						# CentOS 9 or higher
+						dnf remove -y wireguard-tools
+						rm -rf /etc/wireguard/
 					elif [[ "$os" == "centos" && "$os_version" -eq 8 ]]; then
 						# CentOS 8
 						dnf remove -y kmod-wireguard wireguard-tools
@@ -658,6 +670,10 @@ else
 						# Debian 10
 						rm -rf /etc/wireguard/
 						apt-get remove --purge -y wireguard-tools
+					elif [[ "$os" == "centos" && "$os_version" -ge 9 ]]; then
+						# CentOS 9 or higher
+						dnf remove -y wireguard-tools
+						rm -rf /etc/wireguard/
 					elif [[ "$os" == "centos" && "$os_version" -eq 8 ]]; then
 						# CentOS 8
 						dnf remove -y wireguard-tools
